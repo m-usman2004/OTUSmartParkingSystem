@@ -1,6 +1,7 @@
 from flask import Flask, jsonify, request
 from database import initialize_database, DB_PATH
 import sqlite3
+import os
 
 app = Flask(__name__)
 
@@ -212,7 +213,11 @@ def get_reservations():
     return jsonify(reservations)
 
 if __name__ == "__main__":
-    #initialize the database before starting the server
+     #initialize this lot's database
     initialize_database()
-    #start the Flask server on port 5001
-    app.run(port=5001, debug=True)
+
+    #get the port from an environment variable
+    port = int(os.getenv("PORT", "5001"))
+
+    #start the parking lot server
+    app.run(port=port, debug=False)
