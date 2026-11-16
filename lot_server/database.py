@@ -1,7 +1,10 @@
 import sqlite3
 from pathlib import Path
+import os
 
-DB_PATH = Path(__file__).parent / "parking.db"
+LOT_ID = os.getenv("LOT_ID", "A")
+LOT_CAPACITY = int(os.getenv("LOT_CAPACITY", "10")) 
+DB_PATH = Path(__file__).parent / f"parking_{LOT_ID}.db"
 
 
 def initialize_database():
@@ -28,16 +31,18 @@ def initialize_database():
         )
     """)
 
-    #Insert 10 parking spots if the table is empty
-    cursor.execute("SELECT COUNT(*) FROM parking_spots")
-    count = cursor.fetchone()[0]
+    #adds any missing parking spots up to the configured capacity
+    #existing spots and reservations remain unchanged
+    for i in range(1, LOT_CAPACITY + 1):
+        spot_number = f"{LOT_ID}{i}"
 
-    if count == 0:
-        for i in range(1, 11):
-            cursor.execute(
-                "INSERT INTO parking_spots (spot_number) VALUES (?)",
-                (f"A{i}",)
-            )
+        cursor.execute(
+            """
+            INSERT OR IGNORE INTO parking_spots (spot_number)
+            VALUES (?)
+            """,
+            (spot_number,)
+        )
 
     #saving db changes
     conn.commit()
