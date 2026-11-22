@@ -2,6 +2,7 @@ from flask import Flask, jsonify, request
 from database import initialize_database, DB_PATH
 import sqlite3
 import os
+import requests, threading, time
 
 app = Flask(__name__)
 
@@ -212,12 +213,84 @@ def get_reservations():
 
     return jsonify(reservations)
 
-if __name__ == "__main__":
-     #initialize this lot's database
-    initialize_database()
+#address of the central Flask server
+CENTRAL_SERVER_URL = "http://127.0.0.1:5000"
 
-    #get the port from an environment variable
+
+#register this parking lot with the central server
+def register_with_central():
+
+    #get this lot's ID and port from environment variables
+    lot_id = os.getenv("LOT_ID", "A")
     port = int(os.getenv("PORT", "5001"))
 
-    #start the parking lot server
+    while True:
+        try:
+            #send this lot's information to the central server
+            response = requests.post(
+                f"{CENTRAL_SERVER_URL}/api/register",
+                json={
+                    "lot_id": lot_id,
+                    "port": port
+                },
+                timeout=3
+            )
+
+            response.raise_for_status()
+
+            print(f"Lot {lot_id} registered successfully")
+            return
+
+        except requests.RequestException:
+            #retry registration if the central server is unavailable
+            print(f"Lot {lot_id}: registration failed, retrying...")
+            time.sleep(5)
+            
+#periodically send heartbeat messages to the central server
+def send_heartbeats():
+
+    lot_id = os.getenv("LOT_ID", "A")
+
+    while True:
+        try:
+            #send a heartbeat every 5 seconds
+            response = requests.post(
+                f"{CENTRAL_SERVER_URL}/api/heartbeat",
+                json={"lot_id": lot_id},
+                timeout=3
+            )
+
+            #if central server has restarted, register again
+            if response.status_code == 404:
+                register_with_central()
+
+            else:
+                response.raise_for_status()
+
+        except requests.RequestException:
+            #central server might temporarily be unavailable
+            print(f"Lot {lot_id}: heartbeat failed")
+
+        time.sleep(5)
+
+if __name__ == "__main__":
+
+    #initialize this lot's database
+    initialize_database()
+
+    #get this lot's configured port
+    port = int(os.getenv("PORT", "5001"))
+
+    #start a background thread to handle registration and heartbeats
+    def registration_and_heartbeat():
+        register_with_central()
+        send_heartbeats()
+
+    heartbeat_thread = threading.Thread(
+        target=registration_and_heartbeat,
+        daemon=True
+    )
+    heartbeat_thread.start()
+
+    #start the lot server
     app.run(port=port, debug=False)
