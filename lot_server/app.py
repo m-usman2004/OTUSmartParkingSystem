@@ -213,63 +213,74 @@ def get_reservations():
 
     return jsonify(reservations)
 
-#address of the central Flask server
-CENTRAL_SERVER_URL = "http://127.0.0.1:5000"
+#addresses of the central servers (primary first, then backup)
+CENTRAL_SERVER_URLS = [
+    "http://127.0.0.1:5000",
+    "http://127.0.0.1:5100"
+]
 
 
-#register this parking lot with the central server
-def register_with_central():
+#register this parking lot with one central server, returns True if it worked
+def register_with_central(central_url):
 
     #get this lot's ID and port from environment variables
     lot_id = os.getenv("LOT_ID", "A")
     port = int(os.getenv("PORT", "5001"))
 
-    while True:
-        try:
-            #send this lot's information to the central server
-            response = requests.post(
-                f"{CENTRAL_SERVER_URL}/api/register",
-                json={
-                    "lot_id": lot_id,
-                    "port": port
-                },
-                timeout=3
-            )
+    try:
+        response = requests.post(
+            f"{central_url}/api/register",
+            json={
+                "lot_id": lot_id,
+                "port": port
+            },
+            timeout=3
+        )
 
-            response.raise_for_status()
+        response.raise_for_status()
+        print(f"Lot {lot_id} registered with {central_url}")
+        return True
 
-            print(f"Lot {lot_id} registered successfully")
-            return
+    except requests.RequestException:
+        print(f"Lot {lot_id}: could not register with {central_url}")
+        return False
 
-        except requests.RequestException:
-            #retry registration if the central server is unavailable
-            print(f"Lot {lot_id}: registration failed, retrying...")
-            time.sleep(5)
-            
-#periodically send heartbeat messages to the central server
+
+#send heartbeats to every central server every 5 seconds
+#each central server is handled on its own, so one being down
+#does not stop heartbeats to the other
 def send_heartbeats():
 
     lot_id = os.getenv("LOT_ID", "A")
 
+    #tracks which central servers this lot is registered with
+    registered = {url: False for url in CENTRAL_SERVER_URLS}
+
     while True:
-        try:
-            #send a heartbeat every 5 seconds
-            response = requests.post(
-                f"{CENTRAL_SERVER_URL}/api/heartbeat",
-                json={"lot_id": lot_id},
-                timeout=3
-            )
+        for url in CENTRAL_SERVER_URLS:
 
-            #if central server has restarted, register again
-            if response.status_code == 404:
-                register_with_central()
+            #register first if not registered yet (or after a restart)
+            if not registered[url]:
+                registered[url] = register_with_central(url)
+                continue
 
-            else:
-                response.raise_for_status()
+            try:
+                response = requests.post(
+                    f"{url}/api/heartbeat",
+                    json={"lot_id": lot_id},
+                    timeout=3
+                )
 
-        except requests.RequestException:
-            #central server might temporarily be unavailable
-            print(f"Lot {lot_id}: heartbeat failed")
+                #central server restarted and forgot this lot, register again
+                if response.status_code == 404:
+                    registered[url] = register_with_central(url)
+                else:
+                    response.raise_for_status()
+
+            except requests.RequestException:
+                #this central server is down, try registering again next round
+                print(f"Lot {lot_id}: heartbeat to {url} failed")
+                registered[url] = False
 
         time.sleep(5)
 
@@ -283,7 +294,6 @@ if __name__ == "__main__":
 
     #start a background thread to handle registration and heartbeats
     def registration_and_heartbeat():
-        register_with_central()
         send_heartbeats()
 
     heartbeat_thread = threading.Thread(
