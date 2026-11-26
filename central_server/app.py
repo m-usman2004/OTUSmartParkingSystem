@@ -1,5 +1,5 @@
 from flask import Flask, jsonify, request
-import requests, sys, time, threading
+import requests, sys, time, threading, os
 from pathlib import Path
 from flask_cors import CORS
 
@@ -386,5 +386,7 @@ def get_lot_status():
     return jsonify(statuses), 200
 
 if __name__ == "__main__":
-    #start the central server on port 5000
-    app.run(port=5000, debug=False)
+    #port 5000 = primary, 5100 = backup (set CENTRAL_PORT to choose)
+    port = int(os.getenv("CENTRAL_PORT", "5000"))
+    print(f"Central server running on port {port}")
+    app.run(port=port, debug=False)

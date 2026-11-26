@@ -2,26 +2,64 @@
 import { useCallback, useEffect, useState } from 'react'
 import './App.css'
 
-const API = '/api'
+const PRIMARY_API = '/api'
+const BACKUP_API = '/backup-api'
 const LOT_IDS = ['A', 'B', 'C', 'D', 'E']
 
-async function apiRequest(path, options = {}) {
-  const response = await fetch(`${API}${path}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...options.headers,
-    },
-  })
+// which central server the dashboard is using right now
+let activeApi = PRIMARY_API
+
+// send one request to one central server
+// returns null if that central server could not be reached
+async function sendTo(base, path, options) {
+  let response
+  try {
+    response = await fetch(`${base}${path}`, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        ...options.headers,
+      },
+    })
+  } catch {
+    return null
+  }
 
   const text = await response.text()
   let data
 
   try {
-    data = text ? JSON.parse(text) : {}
+    data = text ? JSON.parse(text) : null
   } catch {
-    throw new Error('Invalid response from the server.')
+    data = null
   }
+
+  // the Vite proxy answers 5xx with no JSON when the central server is down
+  if (response.status >= 500 && data === null) {
+    return null
+  }
+
+  return { response, data: data ?? {} }
+}
+
+async function apiRequest(path, options = {}) {
+  const other = activeApi === PRIMARY_API ? BACKUP_API : PRIMARY_API
+
+  // try the current central server first, then fail over to the other one
+  let result = await sendTo(activeApi, path, options)
+
+  if (result === null) {
+    result = await sendTo(other, path, options)
+
+    if (result === null) {
+      throw new Error('Both central servers are unavailable.')
+    }
+
+    activeApi = other
+    console.log(`Switched to ${activeApi === PRIMARY_API ? 'primary' : 'backup'} central server`)
+  }
+
+  const { response, data } = result
 
   if (!response.ok) {
     throw new Error(
