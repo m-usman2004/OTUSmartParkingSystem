@@ -483,7 +483,37 @@ export default function App() {
               </div>
             )}
           </section>
+            </div>
+
+        <div
+          style={{
+            backgroundColor: "#e8f1fc",
+            border: "1px solid #b8d2f0",
+            borderRadius: "12px",
+            padding: "18px",
+            marginTop: "20px",
+            textAlign: "center",
+            color: "#122b49",
+            fontSize: "16px"
+          }}
+        >
+          <strong>Need Parking Assistance?</strong>
+
+          <p style={{ margin: "8px 0 0" }}>
+            Any issue with parking please contact:{" "}
+            <a
+              href="tel:+19057218668"
+              style={{
+                color: "#2563eb",
+                fontWeight: "bold",
+                textDecoration: "none"
+              }}
+            >
+              (905) 721-8668
+            </a>
+          </p>
         </div>
+
       </main>
 
       <footer className="footer">
